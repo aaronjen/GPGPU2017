@@ -29,11 +29,16 @@ __global__ void Draw(char *frame) {
 		}
 		frame[y*W+x] = c;
 	}
+    int x_push = 7;
     for(int y=5; y < 11; ++y){
-        for(int x=1; x < 15; ++x){
+        for(int x=x_push + 15 - (y-3) * 2; x < x_push + 15; ++x){
             frame[y*W+x] = '#';
         }
+        frame[y*W+ x_push+26] = '|';
     }
+    frame[5*W + x_push+25] = '<';
+    frame[10*W + x_push+26] = '#';
+    
 }
 
 int main(int argc, char **argv)
