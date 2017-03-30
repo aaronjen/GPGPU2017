@@ -6,7 +6,7 @@
 
 static const unsigned W = 640;
 static const unsigned H = 480;
-static const unsigned NFRAME = 960;
+static const unsigned NFRAME = 1440;
 
 struct Lab1VideoGenerator::Impl {
 	int t = 0;
@@ -60,7 +60,7 @@ unsigned int scl = 10;
 double PI = 3.14159265359;
 Particle* particles = new Particle[particle_num];
 double* flowfield = new double[H/scl * W/scl];
-PerlinNoise pn(222);
+PerlinNoise pn(512);
 uint8_t* yuvArr = new uint8_t[W*H];
 void Lab1VideoGenerator::Generate(uint8_t *yuv) {
     if(impl->t == 0){
@@ -105,16 +105,27 @@ void Lab1VideoGenerator::Generate(uint8_t *yuv) {
         particles[i].update();
 
 
-        if(yuvArr[kk] < 5) yuvArr[kk] = 0;
-        else yuvArr[kk] -= 5;
-        if(yuvArr[(kk+1) % (W*H)] < 5) yuvArr[(kk+1) % (W*H)] = 0;
-        else yuvArr[(kk+1) % (W*H)] -= 5;
-        if(yuvArr[(kk-1) % (W*H)] < 5) yuvArr[(kk-1) % (W*H)] = 0;
-        else yuvArr[(kk-1) % (W*H)] -= 5;
-        if(yuvArr[(kk+W) % (W*H)] < 5) yuvArr[(kk+W) % (W*H)] = 0;
-        else yuvArr[(kk+W) % (W*H)] -= 5;
-        if(yuvArr[(kk-W) % (W*H)] < 5) yuvArr[(kk-W) % (W*H)] = 0;
-        else yuvArr[(kk-W) % (W*H)] -= 5;
+        if(yuvArr[kk] < 3) yuvArr[kk] = 0;
+        else yuvArr[kk] -= 3;
+
+        if(yuvArr[(kk+1) % (W*H)] < 3) yuvArr[(kk+1) % (W*H)] = 0;
+        else yuvArr[(kk+1) % (W*H)] -= 3;
+        if(yuvArr[(kk-1) % (W*H)] < 3) yuvArr[(kk-1) % (W*H)] = 0;
+        else yuvArr[(kk-1) % (W*H)] -= 3;
+        
+        if(yuvArr[(kk+W) % (W*H)] < 3) yuvArr[(kk+W) % (W*H)] = 0;
+        else yuvArr[(kk+W) % (W*H)] -= 3;
+        if(yuvArr[(kk+W+1) % (W*H)] < 2) yuvArr[(kk+W+1) % (W*H)] = 0;
+        else yuvArr[(kk+W+1) % (W*H)] -= 2;
+        if(yuvArr[(kk+W-1) % (W*H)] < 2) yuvArr[(kk+W-1) % (W*H)] = 0;
+        else yuvArr[(kk+W-1) % (W*H)] -= 2;
+        
+        if(yuvArr[(kk-W) % (W*H)] < 3) yuvArr[(kk-W) % (W*H)] = 0;
+        else yuvArr[(kk-W) % (W*H)] -= 3;
+        if(yuvArr[(kk-W+1) % (W*H)] < 2) yuvArr[(kk-W+1) % (W*H)] = 0;
+        else yuvArr[(kk-W+1) % (W*H)] -= 2;
+        if(yuvArr[(kk-W-1) % (W*H)] < 2) yuvArr[(kk-W-1) % (W*H)] = 0;
+        else yuvArr[(kk-W-1) % (W*H)] -= 2;
     }
 
     cudaMemcpy(yuv, yuvArr, W*H, cudaMemcpyHostToDevice);
