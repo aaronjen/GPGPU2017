@@ -1,6 +1,6 @@
 CXX       = nvcc
 ECHO      = /bin/echo
-CFLAGS    = -O3 -std=c++11 -I../utils
+CFLAGS    = --std=c++11 -arch sm_30 -O2 -I../utils
 
 all: couting.o main.cu 
 	@$(ECHO) $(CXX) $(CFLAGS) *.o main.cu -o main
