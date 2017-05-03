@@ -7,27 +7,6 @@
 #include <thrust/device_ptr.h>
 #include <thrust/execution_policy.h>
 
-
-void printCharArray(const char* text, int size){
-    char* temp = new char[size];
-    cudaMemcpy(temp, text, size, cudaMemcpyDeviceToHost);
-    for(int i =0; i < size; ++i){
-        std::cout << temp[i];
-    }
-    std::cout << std::endl;
-    delete[] temp;
-}
-
-void printIntArray(const int* _o, int size){
-    int* temp = new int[size];
-    cudaMemcpy(temp, _o, sizeof(int) * size, cudaMemcpyDeviceToHost);
-    for(int i =0; i < size; ++i){
-        std::cout << temp[i] << ' ';
-    }
-    std::cout << std::endl;
-    delete[] temp;
-}
-
 __device__ __host__ int CeilDiv(int a, int b) { return (a-1)/b + 1; }
 __device__ __host__ int CeilAlign(int a, int b) { return CeilDiv(a, b) * b; }
 
@@ -47,7 +26,7 @@ void CountPosition1(const char *text, int *pos, int text_size)
 }
 
 // PART II
-#define BLOCKSIZE 100
+#define BLOCKSIZE 512
 
 __global__ void mapping(const char* text, int* pos, int text_size){
     const int index = blockIdx.x *blockDim.x + threadIdx.x;
@@ -88,7 +67,6 @@ __global__ void downSweep(int* pos, int* key, int step, int n_op){
     const int indRight = indLeft + step;
 
     int keyLeft = key[indLeft];
-    int keyRight = key[indRight];
     int left = pos[indLeft];
     int right = pos[indRight];
 
