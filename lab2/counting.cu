@@ -68,44 +68,44 @@ __global__ void downSweep(int* pos, int* key, int step, int n_op){
 }
 
 void scan(int* pos, int text_size){
-    int* key;
-    const size_t _s = sizeof(int)*text_size;
-    cudaMalloc(&key, _s);
-    cudaMemcpy(key, pos, _s, cudaMemcpyDeviceToDevice);
-    
-    // up sweep
-    int _step = 1;
-    while(_step*2 <= text_size){
-        int n_op = CeilDiv(text_size, _step*2);
-        upSweep<<<CeilDiv(n_op, BLOCKSIZE), BLOCKSIZE>>>(pos, key, _step, text_size, n_op);
-        _step *= 2;
+    int full_size = 1;
+    while(full_size < text_size){
+        full_size *= 2;
     }
-    if(_step == text_size) _step /= 2;
-
-    // down sweep
+    
     int* tmp;
-    const int _size = (_step == text_size? _step:_step*2);
-    cudaMalloc(&tmp, sizeof(int)*_size);
-    cudaMemset(tmp, 0, sizeof(int)*_size);
+    const int _s = sizeof(int)*full_size;
+    cudaMalloc(&tmp, _s);
+    cudaMemset(tmp, 0, _s);
     cudaMemcpy(tmp, pos, sizeof(int)*text_size, cudaMemcpyDeviceToDevice);
-    cudaMemset(tmp+_size-1, 0, sizeof(int));
 
-    while(_step >= 2){
-        int n_op = CeilDiv(_size, _step*2);
-        downSweep<<<CeilDiv(n_op, BLOCKSIZE), BLOCKSIZE>>>(tmp, key,  _step, n_op);
-        _step /= 2;
+    int reduce_step = 2;
+    int n_op = 0;
+    while(full_size != reduce_step){
+        n_op = CeilDiv(text_size, reduce_step);
+        upSweep<<<CeilDiv(n_op, BLOCKSIZE), BLOCKSIZE>>>(tmp, pos, reduce_step/2, text_size, n_op);
+        reduce_step *= 2;
     }
-    int n_op = CeilDiv(text_size, _step*2)+1;
-    downSweep<<<CeilDiv(n_op, BLOCKSIZE), BLOCKSIZE>>>(tmp, key,  _step, n_op);
-    
-    if(_size == text_size){
+    n_op = CeilDiv(text_size, reduce_step);
+    upSweep<<<CeilDiv(n_op, BLOCKSIZE), BLOCKSIZE>>>(tmp, pos, reduce_step/2, text_size, n_op);
+
+    int last;
+    cudaMemcpy(&last, tmp+full_size-1, sizeof(int), cudaMemcpyDeviceToHost);
+
+    while(reduce_step >= 4){
+        n_op = CeilDiv(full_size, reduce_step);
+        downSweep<<<CeilDiv(n_op, BLOCKSIZE), BLOCKSIZE>>>(tmp, pos, reduce_step/2, n_op);
+        reduce_step /= 2;
+    }
+    n_op = CeilDiv(text_size, reduce_step)+1;
+    downSweep<<<CeilDiv(n_op, BLOCKSIZE), BLOCKSIZE>>>(tmp, pos, reduce_step/2, n_op);
+
+    if(full_size == text_size){
         cudaMemcpy(pos, tmp+1, sizeof(int)*(text_size-1), cudaMemcpyDeviceToDevice);
+        cudaMemset(pos+text_size-1, last, sizeof(int));
     }
-    else{
-        cudaMemcpy(pos, tmp+1, sizeof(int)*text_size, cudaMemcpyDeviceToDevice);
-    }  
+    else cudaMemcpy(pos, tmp+1, sizeof(int)*text_size, cudaMemcpyDeviceToDevice);
 
-    cudaFree(key);
     cudaFree(tmp);
 }
 
