@@ -26,7 +26,7 @@ void CountPosition1(const char *text, int *pos, int text_size)
 }
 
 // PART II
-#define BLOCKSIZE 512
+#define BLOCKSIZE 128
 
 __global__ void mapping(const char* text, int* pos, int text_size){
     const int index = blockIdx.x *blockDim.x + threadIdx.x;
@@ -63,25 +63,43 @@ __global__ void upSweep(int* pos, int* key, int step, int size){
     key[index] = keyShared[tid];
 }
 
-__global__ void downSweep(int* pos, int* key, int step, int n_op){
-    const int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if(index >= n_op) return;
-    const int indLeft = index*step*2 + (step-1);
-    const int indRight = indLeft + step;
+__global__ void downSweep(int* pos, int* key, int step, int size, int text_size){
+    const int tid = threadIdx.x;
+    const int sid = blockIdx.x * blockDim.x;
+    int m_step = CeilDiv(step, BLOCKSIZE);
+    if(sid+tid >= size/m_step) return;
+    const int index = (sid+tid+1)*m_step-1;
+    if(index >= size || index < 0) return;
 
-    const int keyLeft = key[indLeft];
-    const int left = pos[indLeft];
-    const int right = pos[indRight];
+    __shared__ int posShared[BLOCKSIZE];
+    __shared__ int keyShared[BLOCKSIZE];
 
-    if(keyLeft == 0){
-        pos[indRight] = left;
+    posShared[tid] = pos[index];
+    if(index >= text_size)
+        keyShared[tid] = 0;
+    else
+        keyShared[tid] = key[index];
+    __syncthreads();
+
+    for(int s = step/m_step; s >= 2; s /= 2){
+        if(tid % s == s-1){
+            int leftid = tid - s/2;
+            
+            int right = posShared[tid];
+
+
+            if(keyShared[leftid] == 0) 
+                posShared[tid] = posShared[leftid];
+            else
+                posShared[tid] += posShared[leftid];
+            posShared[leftid] = right;
+        }
+        __syncthreads();
     }
-    else{
-        pos[indRight] = left + right;
-    }
-    pos[indLeft] = right;
+
+    pos[index] = posShared[tid];
+    key[index] = keyShared[tid];
 }
-
 
 void scan(int* pos, int text_size){
     int full_size = 1;
@@ -104,20 +122,17 @@ void scan(int* pos, int text_size){
 
     int last;
     cudaMemcpy(&last, tmp+full_size-1, sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemset(tmp+full_size-1, 0, sizeof(int));
 
-    int n_op = 0;
     reduce_step = full_size;
-    while(reduce_step >= 4){
-        n_op = CeilDiv(full_size, reduce_step);
-        downSweep<<<CeilDiv(n_op, BLOCKSIZE), BLOCKSIZE>>>(tmp, pos, reduce_step/2, n_op);
-        reduce_step /= 2;
+    while(reduce_step >= 2){
+        downSweep<<<CeilDiv(full_size, reduce_step), BLOCKSIZE>>>(tmp, pos, reduce_step, full_size, text_size);
+        reduce_step = reduce_step/BLOCKSIZE;
     }
-    n_op = CeilDiv(text_size, reduce_step)+1;
-    downSweep<<<CeilDiv(n_op, BLOCKSIZE), BLOCKSIZE>>>(tmp, pos, reduce_step/2, n_op);
 
     if(full_size == text_size){
         cudaMemcpy(pos, tmp+1, sizeof(int)*(text_size-1), cudaMemcpyDeviceToDevice);
-        cudaMemset(pos+text_size-1, last, sizeof(int));
+        cudaMemcpy(pos+text_size-1, &last, sizeof(int), cudaMemcpyHostToDevice);
     }
     else cudaMemcpy(pos, tmp+1, sizeof(int)*text_size, cudaMemcpyDeviceToDevice);
     cudaFree(tmp);
