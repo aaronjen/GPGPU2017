@@ -42,20 +42,9 @@ __global__ void upSweep(int* pos, int* key, int step, int text_size, int n_op){
     const int indRight = indLeft + step;
     if(indLeft >= text_size || indRight >= text_size) return;
 
-    const int keyLeft = key[indLeft];
-    const int keyRight = key[indRight];
-    const int left = pos[indLeft];
-    const int right = pos[indRight];
-
-
-    if(keyRight != 0){
-        if(keyLeft == 0){
-            pos[indRight] = right + left;
-            key[indRight] = 0;
-        }
-        else {
-            pos[indRight] = left + right;    
-        }
+    if(key[indRight] != 0){
+        if(key[indLeft] == 0) key[indRight] = 0;
+        pos[indRight] = pos[indLeft] + pos[indRight];
     }
 }
 
@@ -65,18 +54,17 @@ __global__ void downSweep(int* pos, int* key, int step, int n_op){
     const int indLeft = index*step*2 + (step-1);
     const int indRight = indLeft + step;
 
-    int keyLeft = key[indLeft];
-    int left = pos[indLeft];
-    int right = pos[indRight];
+    const int keyLeft = key[indLeft];
+    const int left = pos[indLeft];
+    const int right = pos[indRight];
 
     if(keyLeft == 0){
-        pos[indLeft] = right;
         pos[indRight] = left;
     }
     else{
-        pos[indLeft] = right;
         pos[indRight] = left + right;
     }
+    pos[indLeft] = right;
 }
 
 void scan(int* pos, int text_size){
