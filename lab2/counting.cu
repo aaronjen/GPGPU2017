@@ -35,17 +35,32 @@ __global__ void mapping(const char* text, int* pos, int text_size){
     
 }
 
-__global__ void upSweep(int* pos, int* key, int step, int text_size, int n_op){
-    const int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if(index >= n_op) return;
-    const int indLeft = index * step * 2 + (step-1);
-    const int indRight = indLeft + step;
-    if(indLeft >= text_size || indRight >= text_size) return;
+__global__ void upSweep(int* pos, int* key, int step, int size){
+    const int tid = threadIdx.x;
+    const int sid = blockIdx.x * blockDim.x;
+    if(sid+tid >= size/step) return;
+    const int index = (sid+tid+1)*step-1;
+    if(index >= size) return;
 
-    if(key[indRight] != 0){
-        if(key[indLeft] == 0) key[indRight] = 0;
-        pos[indRight] = pos[indLeft] + pos[indRight];
+    __shared__ int posShared[BLOCKSIZE];
+    __shared__ int keyShared[BLOCKSIZE];
+
+    posShared[tid] = pos[index];
+    keyShared[tid] = key[index];
+    __syncthreads();
+
+    for(int reduce_step = 2; reduce_step <= BLOCKSIZE; reduce_step *= 2){
+        if (tid % reduce_step != (reduce_step-1)) break;
+        int leftid = tid-reduce_step/2;
+        if(keyShared[tid] != 0){
+            if(keyShared[leftid] == 0) keyShared[tid] = 0;
+            posShared[tid] = posShared[tid] + posShared[leftid];
+        }
+        __syncthreads();
     }
+
+    pos[index] = posShared[tid];
+    key[index] = keyShared[tid];
 }
 
 __global__ void downSweep(int* pos, int* key, int step, int n_op){
@@ -67,6 +82,7 @@ __global__ void downSweep(int* pos, int* key, int step, int n_op){
     pos[indLeft] = right;
 }
 
+
 void scan(int* pos, int text_size){
     int full_size = 1;
     while(full_size < text_size){
@@ -79,19 +95,18 @@ void scan(int* pos, int text_size){
     cudaMemset(tmp, 0, _s);
     cudaMemcpy(tmp, pos, sizeof(int)*text_size, cudaMemcpyDeviceToDevice);
 
-    int reduce_step = 2;
-    int n_op = 0;
-    while(full_size != reduce_step){
-        n_op = CeilDiv(text_size, reduce_step);
-        upSweep<<<CeilDiv(n_op, BLOCKSIZE), BLOCKSIZE>>>(tmp, pos, reduce_step/2, text_size, n_op);
-        reduce_step *= 2;
+    int reduce_step = BLOCKSIZE;
+    while(full_size > reduce_step){
+        upSweep<<<CeilDiv(text_size, reduce_step), BLOCKSIZE>>>(tmp, pos, reduce_step/BLOCKSIZE, text_size);
+        reduce_step *= BLOCKSIZE;
     }
-    n_op = CeilDiv(text_size, reduce_step);
-    upSweep<<<CeilDiv(n_op, BLOCKSIZE), BLOCKSIZE>>>(tmp, pos, reduce_step/2, text_size, n_op);
+    upSweep<<<CeilDiv(text_size, reduce_step), BLOCKSIZE>>>(tmp, pos, reduce_step/BLOCKSIZE, text_size);
 
     int last;
     cudaMemcpy(&last, tmp+full_size-1, sizeof(int), cudaMemcpyDeviceToHost);
 
+    int n_op = 0;
+    reduce_step = full_size;
     while(reduce_step >= 4){
         n_op = CeilDiv(full_size, reduce_step);
         downSweep<<<CeilDiv(n_op, BLOCKSIZE), BLOCKSIZE>>>(tmp, pos, reduce_step/2, n_op);
@@ -105,12 +120,11 @@ void scan(int* pos, int text_size){
         cudaMemset(pos+text_size-1, last, sizeof(int));
     }
     else cudaMemcpy(pos, tmp+1, sizeof(int)*text_size, cudaMemcpyDeviceToDevice);
-
     cudaFree(tmp);
 }
 
 void CountPosition2(const char *text, int *pos, int text_size)
 {
-    mapping<<<text_size/BLOCKSIZE + 1, BLOCKSIZE>>>(text, pos, text_size);
+    mapping<<<CeilDiv(text_size, BLOCKSIZE), BLOCKSIZE>>>(text, pos, text_size);
     scan(pos, text_size);
 }
