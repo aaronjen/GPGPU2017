@@ -30,9 +30,9 @@ void CountPosition1(const char *text, int *pos, int text_size)
 
 __global__ void mapping(const char* text, int* pos, int text_size){
     const int index = blockIdx.x *blockDim.x + threadIdx.x;
-    if (index < text_size){
-        pos[index] = text[index] != '\n';
-    }
+    if (index >= text_size) return;
+    pos[index] = text[index] != '\n';
+    
 }
 
 __global__ void upSweep(int* pos, int* key, int step, int text_size, int n_op){
@@ -48,15 +48,14 @@ __global__ void upSweep(int* pos, int* key, int step, int text_size, int n_op){
     const int right = pos[indRight];
 
 
-    if(keyRight == 0){
-        pos[indRight] = right;
-    }
-    else if(keyLeft == 0){
-        pos[indRight] = right + left;
-        key[indRight] = 0;
-    }
-    else {
-        pos[indRight] = left + right;    
+    if(keyRight != 0){
+        if(keyLeft == 0){
+            pos[indRight] = right + left;
+            key[indRight] = 0;
+        }
+        else {
+            pos[indRight] = left + right;    
+        }
     }
 }
 
@@ -78,20 +77,16 @@ __global__ void downSweep(int* pos, int* key, int step, int n_op){
         pos[indLeft] = right;
         pos[indRight] = left + right;
     }
-
-
 }
 
 void scan(int* pos, int text_size){
     int* key;
-
     const size_t _s = sizeof(int)*text_size;
     cudaMalloc(&key, _s);
-    cudaMemset(key, 0, _s);
     cudaMemcpy(key, pos, _s, cudaMemcpyDeviceToDevice);
     
+    // up sweep
     int _step = 1;
-
     while(_step*2 <= text_size){
         int n_op = CeilDiv(text_size, _step*2);
         upSweep<<<CeilDiv(n_op, BLOCKSIZE), BLOCKSIZE>>>(pos, key, _step, text_size, n_op);
@@ -99,21 +94,21 @@ void scan(int* pos, int text_size){
     }
     if(_step == text_size) _step /= 2;
 
-    int last;
+    // down sweep
     int* tmp;
     const int _size = (_step == text_size? _step:_step*2);
     cudaMalloc(&tmp, sizeof(int)*_size);
     cudaMemset(tmp, 0, sizeof(int)*_size);
     cudaMemcpy(tmp, pos, sizeof(int)*text_size, cudaMemcpyDeviceToDevice);
-    cudaMemcpy(&last, tmp+_size-1, sizeof(int), cudaMemcpyDeviceToHost);
     cudaMemset(tmp+_size-1, 0, sizeof(int));
 
-
-    while(_step >= 1){
+    while(_step >= 2){
         int n_op = CeilDiv(_size, _step*2);
         downSweep<<<CeilDiv(n_op, BLOCKSIZE), BLOCKSIZE>>>(tmp, key,  _step, n_op);
         _step /= 2;
     }
+    int n_op = CeilDiv(text_size, _step*2)+1;
+    downSweep<<<CeilDiv(n_op, BLOCKSIZE), BLOCKSIZE>>>(tmp, key,  _step, n_op);
     
     if(_size == text_size){
         cudaMemcpy(pos, tmp+1, sizeof(int)*(text_size-1), cudaMemcpyDeviceToDevice);
