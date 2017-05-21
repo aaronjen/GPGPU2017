@@ -41,47 +41,68 @@ __global__ void Jacobi(
 	const int xt = blockIdx.x * blockDim.x + threadIdx.x;
 	const int curt = wt*yt+xt;
 	
-	const int max_t = wt*ht;
-	const int max_b = wb*hb;
 	if (yt < ht and xt < wt and mask[curt] > 127.0f) {
 		const int yb = oy+yt, xb = ox+xt;
 		const int curb = wb*yb+xb;
 		if (0 <= yb and yb < hb and 0 <= xb and xb < wb) {
 			// cb = 1/4(4*ct-(Nt +Wt +St +Et)+(Nb +Wb)+(Sb +Eb))
-			const int nt = curt-wt;
-			const int st = curt+wt;
-			const int wt = curt-1;
-			const int et = curt+1;
-
-			const int nb = curb-wb;
-			const int sb = curb+wb;
-			const int wb = curb-1;
-			const int eb = curb+1;
-
-			const int tvs[] = {nt, st, wt, et};
-			const int bvs[] = {nb, sb, wb, eb};
 
 			int count = 0;
 			float tmp[3] = {0, 0, 0};
 			bool boundary = false;
 			for(int i = 0; i < 4; ++i){
-				const int tp = tvs[i];
-				const int bp = bvs[i];
-				if(mask[tp] < 127 || tp < 0 || tp >= max_t){
+				int tp;
+				int bp;
+				if(i == 0){
+					if(yb-1 < 0) continue;
+					if(yt-1 < 0) {
+						boundary = true;
+						break;
+					}
+					bp = curb-wb;
+					tp = curt-wt;
+				}
+				else if(i == 1){
+					if(xb-1 < 0) continue;
+					if(xt-1 < 0){
+						boundary = true;
+						break;
+					}
+					bp = curb-1;
+					tp = curt-1;
+				}
+				else if(i == 2){
+					if(yb+1 >= hb) continue;
+					if(yt+1 >= ht) {
+						boundary = true;
+						break;
+					}
+					bp = curb+wb;
+					tp = curt+wt;
+				}
+				else if(i == 3){
+					if(xb+1 >= wb) continue;
+					if(xt+1 >= wt) {
+						boundary = true;
+						break;
+					}
+					bp = curb+1;
+					tp = curt+1;
+				}
+
+				if(mask[tp] < 127){
 					boundary = true;
 					break;
 				}
 
-				if(bp >= 0 && bp < max_b){
-					for(int j = 0; j < 3; ++j){
-						const float ctv = target[curt*3+j];
-						const float tpv = target[tp*3+j];
-						const float bpv = output[bp*3+j];
-						
-						tmp[j] += ctv - tpv + bpv;
-					}
-					++count;
+				for(int j = 0; j < 3; ++j){
+					const float ctv = target[curt*3+j];
+					const float tpv = target[tp*3+j];
+					const float bpv = output[bp*3+j];
+					
+					tmp[j] += ctv - tpv + bpv;
 				}
+				++count;
 			}
 
 			if (boundary){
